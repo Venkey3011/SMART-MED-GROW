@@ -1,0 +1,21 @@
+# Render.com Blueprint Deployment Specification
+# https://render.com/docs/blueprints
+
+services:
+  - type: web
+    name: smart-med-grow
+    env: node
+    plan: free
+    buildCommand: npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: GEMINI_API_KEY
+        sync: false # User will input their secure Gemini API key in Render Dashboard
+    disk:
+      name: smartmedgrow-db-storage
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1
