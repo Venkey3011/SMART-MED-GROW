@@ -108,6 +108,7 @@ export default function App() {
   const [activeCultivation, setActiveCultivation] = useState<Cultivation | null>(null);
   const [latestRecommendation, setLatestRecommendation] = useState<Recommendation | null>(null);
   const [userDevice, setUserDevice] = useState<Device | null>(null);
+  const [selectedCultivationCrop, setSelectedCultivationCrop] = useState('');
   const [userHistory, setUserHistory] = useState<{ readings: SensorReading[]; logs: WateringLog[] }>({ readings: [], logs: [] });
 
   // Admin Dashboard States
@@ -428,6 +429,10 @@ export default function App() {
 
   // Start Cultivation cycle (User action)
   const startCultivation = async (microgreenId: string) => {
+    if (!microgreenId) {
+      showToast('Choose a microgreen before starting a cultivation cycle.', 'error');
+      return;
+    }
     try {
       const res = await fetch('/api/cultivations', {
         method: 'POST',
@@ -438,10 +443,18 @@ export default function App() {
         body: JSON.stringify({ microgreenId })
       });
       if (res.ok) {
+        const cultivation = await res.json();
+        setActiveCultivation(cultivation);
+        setActiveTab('cultivation');
+        showToast('Cultivation started. Your Smart Bucket is now assigned to this crop.', 'success');
         if (currentUser) loadUserDashboardData(currentUser.id);
+      } else {
+        const error = await res.json();
+        showToast(error.error || 'Could not start the cultivation cycle.', 'error');
       }
     } catch (err) {
       console.error('Failed to start cultivation', err);
+      showToast('Could not reach the application server. Check that it is running.', 'error');
     }
   };
 
@@ -1211,8 +1224,31 @@ export default function App() {
                   </div>
                 </div>
               ) : (
-                <div className="text-center py-12 text-zinc-400 italic">
-                  No active cultivation currently assigned to your Smart Bucket. Complete your health profile suggestions to start!
+                <div className="max-w-xl mx-auto py-6 space-y-4 text-center">
+                  <div className="text-zinc-500 text-sm">
+                    Select the microgreen you have sown, then start its growing cycle. This links the crop to your connected Smart Bucket.
+                  </div>
+                  <select
+                    value={selectedCultivationCrop || latestRecommendation?.recommendedMicrogreenId || ''}
+                    onChange={(e) => setSelectedCultivationCrop(e.target.value)}
+                    className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2.5 text-sm text-zinc-800"
+                  >
+                    <option value="">Choose a microgreen…</option>
+                    {microgreens.filter(m => m.active).map(m => (
+                      <option key={m.id} value={m.id}>{m.name} — harvest in about {m.daysToHarvest} days</option>
+                    ))}
+                  </select>
+                  {latestRecommendation && (
+                    <p className="text-xs text-emerald-700">Recommended for you: <strong>{microgreens.find(m => m.id === latestRecommendation.recommendedMicrogreenId)?.name}</strong></p>
+                  )}
+                  <button
+                    onClick={() => startCultivation(selectedCultivationCrop || latestRecommendation?.recommendedMicrogreenId || '')}
+                    disabled={!userDevice}
+                    className="w-full rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-300 px-4 py-3 text-sm font-bold text-white transition-colors"
+                  >
+                    Start Cultivation 🌱
+                  </button>
+                  {!userDevice && <p className="text-xs text-amber-700">Connect or register an ESP32-CAM bucket first.</p>}
                 </div>
               )}
             </div>
