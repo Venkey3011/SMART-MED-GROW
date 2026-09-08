@@ -666,6 +666,25 @@ app.post('/api/snapshots', authMiddleware, (req: AuthRequest, res) => {
 // IoT APIS (ESP32-CAM and Simulator Communication)
 // -------------------------------------------------------------
 
+// Lightweight heartbeat for the digital (DRY/WET) sensor firmware. This does
+// not manufacture a moisture percentage, because GPIO 13 is a binary sensor.
+app.post('/api/iot/device-status', (req, res) => {
+  const { deviceId, token, soilStatus, pumpStatus, ipAddress } = req.body;
+  if (!deviceId || !token || !['DRY', 'WET'].includes(soilStatus) || !['ON', 'OFF'].includes(pumpStatus)) {
+    return res.status(400).json({ error: 'Device ID, token, soil status, and pump status are required' });
+  }
+  const device = DB.getDeviceById(deviceId);
+  if (!device || token !== device.authToken) return res.status(401).json({ error: 'Unauthorized device' });
+
+  const updates: Partial<Device> = { lastSeen: new Date().toISOString(), status: 'Online', usePhysicalCam: true };
+  if (ipAddress) {
+    updates.esp32CamIpAddress = ipAddress;
+    updates.esp32CamStreamUrl = `http://${ipAddress}/stream`;
+  }
+  DB.updateDevice(deviceId, updates);
+  res.json({ success: true, receivedAt: updates.lastSeen, soilStatus, pumpStatus });
+});
+
 // POST /api/iot/sensor-reading
 app.post('/api/iot/sensor-reading', (req, res) => {
   const { deviceId, moistureValue, token } = req.body;
@@ -676,9 +695,7 @@ app.post('/api/iot/sensor-reading', (req, res) => {
 
   const device = DB.getDeviceById(deviceId);
   if (!device) return res.status(404).json({ error: 'Device unauthorized or unregistered' });
-
-  // Optional: In a production environment we'd check req.headers['authorization'] or token
-  // but for simple ESP32 connectivity or simulator let's allow it if deviceId matches.
+  if (!token || token !== device.authToken) return res.status(401).json({ error: 'Unauthorized device' });
   
   // Update device heartbeat
   DB.updateDevice(deviceId, { 
