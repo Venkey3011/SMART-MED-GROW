@@ -478,6 +478,25 @@ app.delete('/api/microgreens/:id', authMiddleware, (req: AuthRequest, res) => {
 // CULTIVATION APIS
 // -------------------------------------------------------------
 
+// GET /api/cultivations/user-active
+// The previous client implementation accidentally queried an admin-only route
+// to refresh a normal user's dashboard. Keep all user refresh data behind this
+// user-authorized endpoint instead.
+app.get('/api/cultivations/user-active', authMiddleware, (req: AuthRequest, res) => {
+  if (req.role !== 'user') return res.status(403).json({ error: 'Only users can view their active cultivation' });
+
+  const cultivation = DB.getCultivationByUserId(req.user!.id) || null;
+  const device = DB.getDevices().find(d => d.assignedUserId === req.user!.id) || null;
+  const history = cultivation
+    ? {
+        readings: DB.getSensorReadingsByCultivationId(cultivation.id),
+        logs: DB.getWateringLogsByCultivationId(cultivation.id)
+      }
+    : { readings: [], logs: [] };
+
+  res.json({ cultivation, device, history });
+});
+
 // POST /api/cultivations
 app.post('/api/cultivations', authMiddleware, (req: AuthRequest, res) => {
   if (req.role !== 'user') {

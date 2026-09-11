@@ -81,6 +81,12 @@ export default function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('smg_token'));
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loadingSession, setLoadingSession] = useState<boolean>(true);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error') => {
+    setToast({ message, type });
+    window.setTimeout(() => setToast(current => current?.message === message ? null : current), 5000);
+  };
 
   // General App Data States
   const [microgreens, setMicrogreens] = useState<Microgreen[]>([]);
@@ -109,6 +115,7 @@ export default function App() {
   const [latestRecommendation, setLatestRecommendation] = useState<Recommendation | null>(null);
   const [userDevice, setUserDevice] = useState<Device | null>(null);
   const [selectedCultivationCrop, setSelectedCultivationCrop] = useState('');
+  const [isStartingCultivation, setIsStartingCultivation] = useState(false);
   const [userHistory, setUserHistory] = useState<{ readings: SensorReading[]; logs: WateringLog[] }>({ readings: [], logs: [] });
 
   // Admin Dashboard States
@@ -208,25 +215,18 @@ export default function App() {
         }
       }
 
-      // Get active cultivation
+      // Get user-authorized device, active cultivation, and history together.
       const cRes = await fetch(`/api/cultivations/user-active`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      
-      // Let's query active cult from whole list as fallback
-      const cListRes = await fetch(`/api/admin/users/${userId}`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (cListRes.ok) {
-        const uDetails = await cListRes.json();
-        setActiveCultivation(uDetails.cultivation);
-        setUserDevice(uDetails.device);
-        if (uDetails.history) {
-          setUserHistory({
-            readings: uDetails.history.readings || [],
-            logs: uDetails.history.logs || []
-          });
-        }
+      if (cRes.ok) {
+        const data = await cRes.json();
+        setActiveCultivation(data.cultivation || null);
+        setUserDevice(data.device || null);
+        setUserHistory({
+          readings: data.history?.readings || [],
+          logs: data.history?.logs || []
+        });
       }
 
       // Get notifications
@@ -433,6 +433,7 @@ export default function App() {
       showToast('Choose a microgreen before starting a cultivation cycle.', 'error');
       return;
     }
+    setIsStartingCultivation(true);
     try {
       const res = await fetch('/api/cultivations', {
         method: 'POST',
@@ -455,6 +456,8 @@ export default function App() {
     } catch (err) {
       console.error('Failed to start cultivation', err);
       showToast('Could not reach the application server. Check that it is running.', 'error');
+    } finally {
+      setIsStartingCultivation(false);
     }
   };
 
@@ -958,6 +961,11 @@ export default function App() {
   // -------------------------------------------------------------
   return (
     <div className="min-h-screen bg-[#fafaf9] flex flex-col lg:flex-row font-sans text-zinc-800">
+      {toast && (
+        <div className={`fixed top-4 right-4 z-50 max-w-sm rounded-xl px-4 py-3 text-sm font-semibold shadow-lg ${toast.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'}`} role="status">
+          {toast.message}
+        </div>
+      )}
       
       {/* Side navigation */}
       <SidebarNav 
@@ -1055,9 +1063,10 @@ export default function App() {
                 {latestRecommendation && !activeCultivation && (
                   <button
                     onClick={() => startCultivation(latestRecommendation.recommendedMicrogreenId)}
-                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2 rounded-lg mt-4 cursor-pointer"
+                    disabled={isStartingCultivation}
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white text-xs font-bold py-2 rounded-lg mt-4 cursor-pointer disabled:cursor-not-allowed"
                   >
-                    Start Cultivation Cycle 🌱
+                    {isStartingCultivation ? 'Starting cultivation…' : 'Start Cultivation Cycle 🌱'}
                   </button>
                 )}
               </div>
@@ -1243,10 +1252,10 @@ export default function App() {
                   )}
                   <button
                     onClick={() => startCultivation(selectedCultivationCrop || latestRecommendation?.recommendedMicrogreenId || '')}
-                    disabled={!userDevice}
+                    disabled={!userDevice || isStartingCultivation}
                     className="w-full rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-300 px-4 py-3 text-sm font-bold text-white transition-colors"
                   >
-                    Start Cultivation 🌱
+                    {isStartingCultivation ? 'Starting cultivation…' : 'Start Cultivation 🌱'}
                   </button>
                   {!userDevice && <p className="text-xs text-amber-700">Connect or register an ESP32-CAM bucket first.</p>}
                 </div>
